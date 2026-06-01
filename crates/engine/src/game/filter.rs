@@ -622,8 +622,24 @@ fn controller_ref_player(
             })
         }),
         ControllerRef::ParentTargetController => parent_target_controller_player(state, ability),
+        // CR 506.2 + CR 508.1: The player being attacked. The source-keyed
+        // combat lookup is the precise path when the filter source is itself an
+        // attacker. For batched "Whenever one or more <type> you control attack
+        // a player, ... that player controls" triggers (Gornog, the Red Reaper;
+        // Karazikar, the Eye Tyrant) the trigger source need not be among the
+        // declared attackers, so fall back to the triggering `AttackersDeclared`
+        // event's defending player. Mirrors
+        // `quantity::defending_player_for_quantity_context`.
         ControllerRef::DefendingPlayer => {
-            crate::game::combat::defending_player_for_attacker(state, source_id)
+            crate::game::combat::defending_player_for_attacker(state, source_id).or_else(|| {
+                match state.current_trigger_event.as_ref() {
+                    Some(crate::types::events::GameEvent::AttackersDeclared {
+                        defending_player,
+                        ..
+                    }) => Some(*defending_player),
+                    _ => None,
+                }
+            })
         }
         // CR 608.2c + CR 109.4: The player chosen by the Nth `Choose(Player)`
         // in this resolution — read from the resolution-scoped list.
@@ -3793,6 +3809,49 @@ mod tests {
             .core_types
             .push(CoreType::Creature);
         id
+    }
+
+    /// CR 506.2 + CR 508.1b: `ControllerRef::DefendingPlayer` resolves
+    /// to the attacked player carried by the triggering `AttackersDeclared`
+    /// event even when the filter source is not itself a declared attacker —
+    /// the batched "Whenever one or more Warriors you control attack a player,
+    /// ... that player controls" case (Gornog, the Red Reaper #1667). Without
+    /// the event fallback the source-keyed combat lookup returned `None`, the
+    /// filter resolved against no player, and the dependent creature target set
+    /// was empty, fizzling the trigger.
+    #[test]
+    fn defending_player_filter_resolves_from_attack_event_when_source_not_attacker() {
+        use crate::types::ability::TypedFilter;
+
+        let mut state = setup();
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        // Trigger source (e.g. Gornog) controlled by the attacking player but
+        // NOT among the declared attackers, and with no live combat state.
+        let source = add_creature(&mut state, p0, "Gornog, the Red Reaper");
+        let attacker = add_creature(&mut state, p0, "Warrior");
+        let my_creature = add_creature(&mut state, p0, "My Creature");
+        let their_creature = add_creature(&mut state, p1, "Their Creature");
+
+        // The attacked player (p1) is carried only by the trigger event.
+        state.current_trigger_event = Some(GameEvent::AttackersDeclared {
+            attacker_ids: vec![attacker],
+            defending_player: p1,
+            attacks: vec![(attacker, combat::AttackTarget::Player(p1))],
+        });
+
+        let filter =
+            TargetFilter::Typed(TypedFilter::creature().controller(ControllerRef::DefendingPlayer));
+
+        assert!(
+            matches_target_filter(&state, their_creature, &filter, source),
+            "creature controlled by the attacked player must match the DefendingPlayer filter via the attack event"
+        );
+        assert!(
+            !matches_target_filter(&state, my_creature, &filter, source),
+            "creature controlled by the attacking player must NOT match the DefendingPlayer filter"
+        );
     }
 
     #[test]

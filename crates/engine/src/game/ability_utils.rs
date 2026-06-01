@@ -6359,16 +6359,19 @@ mod tests {
             .contains(&TargetRef::Player(PlayerId(1))));
     }
 
-    /// CR 109.4 + CR 115.1 + CR 506.2: Karazikar regression guard.
+    /// CR 109.4 + CR 115.1: Companion player-slot guard for the genuine
+    /// *chosen* target-player path (`ControllerRef::TargetPlayer`) — e.g.
+    /// "tap target creature target player controls" / "each creature target
+    /// player controls". Auto-surfacing must produce a Player target slot, and
+    /// runtime filter evaluation with a chosen player must restrict legal
+    /// creature targets to only that player's creatures — never the ability
+    /// controller's own creatures.
     ///
-    /// "Whenever you attack a player, tap target creature that player controls
-    /// and goad it." The Tap effect's target filter has
-    /// `controller = ControllerRef::TargetPlayer`. Auto-surfacing must produce
-    /// a Player target slot, and runtime filter evaluation with a chosen player
-    /// must restrict legal creature targets to only that player's creatures —
-    /// never the trigger controller's own creatures.
+    /// (Karazikar / Gornog — "attack a player … that player controls" — now
+    /// route through `ControllerRef::DefendingPlayer` instead, resolved from the
+    /// attack event rather than a chosen slot; see `filter.rs` and #1667.)
     #[test]
-    fn karazikar_tap_target_player_restricts_to_chosen_players_creatures() {
+    fn tap_target_player_filter_restricts_to_chosen_players_creatures() {
         use crate::game::filter::{matches_target_filter, FilterContext};
         use crate::types::ability::ControllerRef;
 

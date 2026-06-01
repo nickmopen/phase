@@ -638,12 +638,13 @@ pub(super) fn parse_subject_application(
         // CR 109.4 + CR 115.1 + CR 603.2: thread the parse context so that
         // controller-suffix resolution inside `parse_target` (notably the
         // "that player controls" relative reference) can see the enclosing
-        // trigger's `relative_player_scope` and emit
-        // `ControllerRef::TargetPlayer` for the attacked / damaged player
-        // instead of falling back to `You`. Without `ctx`, the subject-form
-        // path of "target creature that player controls becomes …" (Gornog,
-        // the Red Reaper) silently bound the target to the trigger
-        // controller's own creatures.
+        // trigger's `relative_player_scope` and emit the introduced player's
+        // controller ref — `ControllerRef::DefendingPlayer` for the attacked
+        // player (CR 506.2 / CR 508.1b) or `ControllerRef::TargetPlayer` for the
+        // damaged player (CR 120.3) — instead of falling back to `You`. Without
+        // `ctx`, the subject-form path of "target creature that player controls
+        // becomes …" (Gornog, the Red Reaper) silently bound the target to the
+        // trigger controller's own creatures.
         let (filter, _) = parse_target_with_ctx(subject, ctx);
         return subject_filter_application(filter, true);
     }
